@@ -88,6 +88,26 @@ export function supabaseBillingStore(): BillingStore {
       if (error) throw error;
       return true;
     },
+    async recordPayment(pay) {
+      let plan: string | null = null;
+      if (pay.userId) {
+        const { data } = await db.from("profiles").select("plan").eq("id", pay.userId).maybeSingle();
+        plan = (data?.plan as string) ?? null;
+      }
+      const { error } = await db.from("payments").upsert(
+        {
+          id: pay.id,
+          user_id: pay.userId,
+          kind: pay.kind,
+          plan: pay.kind === "subscription" ? "pro" : plan,
+          amount_myr: pay.amountMyr,
+          currency: pay.currency,
+          created_at: pay.createdAt,
+        },
+        { onConflict: "id", ignoreDuplicates: true },
+      );
+      if (error) throw error;
+    },
     async retrieveSubscription(id) {
       return getStripe().subscriptions.retrieve(id);
     },

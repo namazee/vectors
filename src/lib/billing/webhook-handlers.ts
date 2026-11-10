@@ -33,6 +33,8 @@ export interface BillingStore {
   findTopupByPaymentIntent(paymentIntentId: string): Promise<{ userId: string; credits: number; id: string; status: string } | null>;
   /** Marks the top-up refunded and deducts up to `credits` from the top-up bucket (never below zero). Idempotent. */
   refundTopup(topupId: string, userId: string, credits: number, note: string): Promise<boolean>;
+  /** Revenue record for the finance dashboard. Idempotent on id. */
+  recordPayment(p: { id: string; userId: string | null; kind: "subscription" | "topup"; amountMyr: number; currency: string; createdAt: string }): Promise<void>;
   retrieveSubscription(id: string): Promise<Stripe.Subscription>;
 }
 
@@ -81,6 +83,16 @@ async function fulfilTopup(store: BillingStore, session: Stripe.Checkout.Session
   const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null);
   const granted = await store.grantTopup(userId, credits, `topup:${session.id}`, `Top-up: ${pack?.name ?? session.metadata?.packId}`);
   await store.markTopup(session.id, { status: "paid", paymentIntentId });
+  if (session.amount_total != null) {
+    await store.recordPayment({
+      id: session.id,
+      userId,
+      kind: "topup",
+      amountMyr: session.amount_total / 100,
+      currency: session.currency ?? "myr",
+      createdAt: ts(session.created) ?? new Date().toISOString(),
+    });
+  }
   return granted ? `granted ${credits} credits to ${userId}` : "already granted";
 }
 
@@ -113,6 +125,22 @@ export async function handleStripeEvent(event: Stripe.Event, store: BillingStore
     case "customer.subscription.paused":
     case "customer.subscription.resumed": {
       detail = await syncSubscription(store, event.data.object as Stripe.Subscription);
+      break;
+    }
+    case "invoice.paid": {
+      const invoice = event.data.object as Stripe.Invoice;
+      if (invoice.amount_paid > 0) {
+        const userId = await resolveUserId(store, null, customerId(invoice.customer));
+        await store.recordPayment({
+          id: invoice.id ?? event.id,
+          userId,
+          kind: "subscription",
+          amountMyr: invoice.amount_paid / 100,
+          currency: invoice.currency,
+          createdAt: ts(invoice.created) ?? new Date().toISOString(),
+        });
+      }
+      detail = `invoice ${invoice.id} paid`;
       break;
     }
     case "charge.refunded": {
