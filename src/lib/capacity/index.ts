@@ -112,9 +112,14 @@ export async function getSpendState(settings: RuntimeSettings): Promise<SpendSta
 /** Record paid spend and fire the 80% / 100% alerts once per month. */
 export async function recordPaidSpend(usd: number, settings: RuntimeSettings) {
   if (!(usd > 0)) return;
-  const store = getStore();
   await getMonthlySpend(); // make sure the key is seeded from the DB
-  const spent = await store.addFloat(spendKey(), usd, SPEND_CACHE_SECONDS);
+  const spent = await getStore().addFloat(spendKey(), usd, SPEND_CACHE_SECONDS);
+  await checkSpendAlerts(spent, settings);
+}
+
+/** Sends the 80% / 100% cap alerts at most once per month each. */
+export async function checkSpendAlerts(spent: number, settings: RuntimeSettings) {
+  const store = getStore();
   const cap = settings.spendCapUsd;
   if (cap <= 0) return;
   const month = utcMonth();
