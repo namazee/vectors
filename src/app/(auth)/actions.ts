@@ -103,7 +103,7 @@ export async function resetPasswordAction(_: AuthState, formData: FormData): Pro
   const supabase = await createClient();
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) return { error: "Your reset link has expired. Please request a new one." };
-  redirect("/app?toast=password-updated");
+  redirect("/app");
 }
 
 export async function signOutAction() {

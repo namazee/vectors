@@ -333,7 +333,7 @@ export async function POST(req: Request) {
               user_id: userId,
               role: "assistant",
               content: text,
-              model_slug: s?.modelSlug ?? model.slug,
+              model_slug: model.slug, // requested model; the endpoint that answered is in served_model
               served_model: s?.openrouterId ?? null,
               credits_used: credits,
               usage_log_id: logId,
